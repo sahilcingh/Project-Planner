@@ -49,6 +49,11 @@ export const projects = pgTable("projects", {
  * foreign key — that catalog is static application data, not something
  * users edit, so there's no separate `stack_options` table to keep in
  * sync.
+ *
+ * `questionnaireAnswers`/`rankedOptions` are nullable because a project
+ * can also get a stack decision by being told directly what stack it
+ * already uses (skipping the advisor entirely) — that row has a
+ * `chosenSlug`/custom label but no questionnaire or scoring behind it.
  */
 export const stackDecisions = pgTable("stack_decisions", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -59,14 +64,14 @@ export const stackDecisions = pgTable("stack_decisions", {
   // Mirrors packages/api's QuestionnaireAnswers shape — duplicated here
   // (rather than importing it) since packages/db must not depend on
   // packages/api, which depends on packages/db.
-  questionnaireAnswers: jsonb("questionnaire_answers").notNull().$type<{
+  questionnaireAnswers: jsonb("questionnaire_answers").$type<{
     teamSize: "solo" | "small" | "medium" | "large";
     budgetTier: "free" | "low" | "medium" | "high";
     timelineWeeks: number;
     platformTargets: ("web" | "mobile" | "desktop" | "api")[];
     realtimeNeeds: boolean;
   }>(),
-  rankedOptions: jsonb("ranked_options").notNull().$type<
+  rankedOptions: jsonb("ranked_options").$type<
     {
       slug: string;
       score: number;

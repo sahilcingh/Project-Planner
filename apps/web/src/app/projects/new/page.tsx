@@ -10,7 +10,21 @@ import { RankedOptionsList, type RankedResult } from "@/components/ranked-option
 import AnimatedButton from "@/components/ui/animated-button";
 import { Spinner } from "@/components/ui/spinner";
 import { cn } from "@/lib/utils";
+import { STACK_CATALOG } from "@project-planner/api/catalog";
 import type { QuestionnaireAnswers } from "@project-planner/api";
+
+type Mode = "advisor" | "manual";
+
+function useUnauthorizedRedirect() {
+  const router = useRouter();
+  return function handleUnauthorized(err: unknown) {
+    if (err instanceof TRPCClientError && err.data?.code === "UNAUTHORIZED") {
+      router.push("/login");
+      return true;
+    }
+    return false;
+  };
+}
 
 function StepIndicator({ step }: { step: 1 | 2 }) {
   return (
@@ -26,10 +40,37 @@ function StepIndicator({ step }: { step: 1 | 2 }) {
   );
 }
 
+function Chip({
+  selected,
+  onClick,
+  children,
+}: {
+  selected: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={selected}
+      className={cn(
+        "rounded-full border px-3.5 py-1.5 text-sm font-medium transition",
+        selected
+          ? "border-foreground bg-foreground text-background"
+          : "border-border text-foreground hover:bg-foreground/5",
+      )}
+    >
+      {children}
+    </button>
+  );
+}
+
 type Created = { projectId: string; decisionId: string; top3: RankedResult[] };
 
-export default function NewProjectPage() {
+function AdvisorFlow() {
   const router = useRouter();
+  const handleUnauthorized = useUnauthorizedRedirect();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [answers, setAnswers] = useState<QuestionnaireAnswers>({
@@ -46,14 +87,6 @@ export default function NewProjectPage() {
   const [rationale, setRationale] = useState<string | null>(null);
   const [rationaleLoading, setRationaleLoading] = useState(false);
   const [acceptingSlug, setAcceptingSlug] = useState<string | null>(null);
-
-  function handleUnauthorized(err: unknown) {
-    if (err instanceof TRPCClientError && err.data?.code === "UNAUTHORIZED") {
-      router.push("/login");
-      return true;
-    }
-    return false;
-  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -121,7 +154,7 @@ export default function NewProjectPage() {
 
   if (created) {
     return (
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
+      <div className="flex flex-1 flex-col gap-6">
         <StepIndicator step={2} />
 
         <div className="space-y-2">
@@ -176,12 +209,12 @@ export default function NewProjectPage() {
         </div>
 
         {error && <p className="text-sm text-red-600">{error}</p>}
-      </main>
+      </div>
     );
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
+    <div className="flex flex-1 flex-col gap-6">
       <StepIndicator step={1} />
 
       <div className="space-y-2">
@@ -232,6 +265,167 @@ export default function NewProjectPage() {
           )}
         </AnimatedButton>
       </form>
+    </div>
+  );
+}
+
+function ManualFlow() {
+  const router = useRouter();
+  const handleUnauthorized = useUnauthorizedRedirect();
+  const [name, setName] = useState("");
+  const [description, setDescription] = useState("");
+  const [stackSlug, setStackSlug] = useState<string | null>(null);
+  const [useCustomStack, setUseCustomStack] = useState(false);
+  const [customStack, setCustomStack] = useState("");
+  const [inProgress, setInProgress] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!name.trim()) {
+      setError("Give your project a name.");
+      return;
+    }
+    setError(null);
+    setLoading(true);
+    try {
+      const { projectId } = await trpc.project.createManual.mutate({
+        name,
+        description: description || undefined,
+        stackSlug: useCustomStack ? undefined : stackSlug ?? undefined,
+        customStack: useCustomStack && customStack.trim() ? customStack.trim() : undefined,
+        skipStarterPlan: inProgress,
+      });
+      router.push(`/projects/${projectId}`);
+    } catch (err) {
+      if (!handleUnauthorized(err)) {
+        setError("Couldn't create the project. Try again.");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div className="flex flex-1 flex-col gap-6">
+      <div className="space-y-2">
+        <h1 className="text-2xl font-semibold">New project</h1>
+        <p className="text-sm text-gray-500">
+          Tell us the stack you&rsquo;re already using &mdash; no questionnaire needed.
+        </p>
+      </div>
+
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-6 rounded-xl border border-border p-6 sm:p-8"
+      >
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Project name
+          <input
+            type="text"
+            required
+            placeholder="e.g. Customer feedback portal"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ring/40"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+          />
+        </label>
+
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Description
+          <span className="text-xs font-normal text-gray-500">Optional</span>
+          <textarea
+            rows={3}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-ring/40"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </label>
+
+        <div className="flex flex-col gap-2">
+          <div>
+            <span className="text-sm font-medium">Stack</span>
+            <p className="text-xs text-gray-500">Optional &mdash; pick one, type your own, or skip it.</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {STACK_CATALOG.map((option) => (
+              <Chip
+                key={option.slug}
+                selected={!useCustomStack && stackSlug === option.slug}
+                onClick={() => {
+                  setUseCustomStack(false);
+                  setStackSlug(option.slug);
+                }}
+              >
+                {option.name}
+              </Chip>
+            ))}
+            <Chip selected={useCustomStack} onClick={() => setUseCustomStack(true)}>
+              Custom / other
+            </Chip>
+          </div>
+          {useCustomStack && (
+            <input
+              type="text"
+              placeholder="e.g. Django + Postgres"
+              className="mt-1 rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ring/40"
+              value={customStack}
+              onChange={(e) => setCustomStack(e.target.value)}
+            />
+          )}
+        </div>
+
+        <div className="flex flex-col gap-2">
+          <div>
+            <span className="text-sm font-medium">Project stage</span>
+            <p className="text-xs text-gray-500">
+              A fresh project gets a starter checklist for its stack. An
+              in-progress one starts empty so you can add what&rsquo;s actually
+              left.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Chip selected={!inProgress} onClick={() => setInProgress(false)}>
+              Starting fresh
+            </Chip>
+            <Chip selected={inProgress} onClick={() => setInProgress(true)}>
+              Already in progress
+            </Chip>
+          </div>
+        </div>
+
+        {error && <p className="text-sm text-red-600">{error}</p>}
+
+        <AnimatedButton type="submit" disabled={loading} className="w-full">
+          {loading ? (
+            <span className="flex items-center gap-1.5">
+              <Spinner className="size-4" /> Creating...
+            </span>
+          ) : (
+            "Create project"
+          )}
+        </AnimatedButton>
+      </form>
+    </div>
+  );
+}
+
+export default function NewProjectPage() {
+  const [mode, setMode] = useState<Mode>("advisor");
+
+  return (
+    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
+      <div className="flex flex-wrap gap-2">
+        <Chip selected={mode === "advisor"} onClick={() => setMode("advisor")}>
+          Use the stack advisor
+        </Chip>
+        <Chip selected={mode === "manual"} onClick={() => setMode("manual")}>
+          I already have a stack
+        </Chip>
+      </div>
+
+      {mode === "advisor" ? <AdvisorFlow /> : <ManualFlow />}
     </main>
   );
 }

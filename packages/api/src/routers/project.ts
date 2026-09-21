@@ -61,6 +61,81 @@ export const projectRouter = router({
       return { projectId: project.id, decisionId: decision.id, top3 };
     }),
 
+  /**
+   * For a project whose stack is already known — either picked directly
+   * from the catalog or a custom/unlisted stack typed in by hand. Skips
+   * the questionnaire and scoring entirely, so it can create a project at
+   * any stage: a fresh one (seeds the same starter checklist as the
+   * advisor flow, if the stack is a catalog match and a plan isn't
+   * skipped) or an already-in-progress one (skip the starter plan and
+   * add milestones/tasks by hand afterwards).
+   */
+  createManual: protectedProcedure
+    .input(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        stackSlug: z.string().optional(),
+        customStack: z.string().min(1).optional(),
+        skipStarterPlan: z.boolean().default(false),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const option = input.stackSlug
+        ? STACK_CATALOG.find((o) => o.slug === input.stackSlug)
+        : undefined;
+      if (input.stackSlug && !option) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: "Unknown stack slug" });
+      }
+
+      const chosenSlug = option?.slug ?? input.customStack;
+      const plan = option && !input.skipStarterPlan ? generateStarterPlan(option) : null;
+
+      const projectId = await db.transaction(async (tx) => {
+        const [project] = await tx
+          .insert(projects)
+          .values({
+            ownerId: ctx.userId,
+            name: input.name,
+            description: input.description,
+            status: "active",
+          })
+          .returning();
+
+        if (chosenSlug) {
+          await tx.insert(stackDecisions).values({
+            projectId: project.id,
+            version: 1,
+            questionnaireAnswers: null,
+            rankedOptions: null,
+            chosenSlug,
+          });
+        }
+
+        if (plan) {
+          for (const [milestoneIndex, m] of plan.entries()) {
+            const [milestone] = await tx
+              .insert(milestones)
+              .values({ projectId: project.id, title: m.title, order: milestoneIndex })
+              .returning();
+
+            await tx.insert(tasks).values(
+              m.tasks.map((title, taskIndex) => ({
+                projectId: project.id,
+                milestoneId: milestone.id,
+                title,
+                order: taskIndex,
+              })),
+            );
+          }
+        }
+
+        return project.id;
+      });
+
+      return { projectId };
+    }),
+
   generateRationale: protectedProcedure
     .input(z.object({ projectId: uuid, decisionId: uuid }))
     .mutation(async ({ ctx, input }) => {
@@ -76,6 +151,13 @@ export const projectRouter = router({
           ),
         );
       if (!decision) throw new TRPCError({ code: "NOT_FOUND" });
+
+      if (!decision.rankedOptions || !decision.questionnaireAnswers) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "This project's stack was set directly and has no scored recommendation to explain.",
+        });
+      }
 
       const ranked: RankedOption[] = decision.rankedOptions.map((r) => ({
         ...r,

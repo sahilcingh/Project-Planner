@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
+import { Plus, Trash2 } from "lucide-react";
 import { TRPCClientError } from "@trpc/client";
 import { trpc } from "@/lib/trpc";
 import { computeProgress } from "@project-planner/api/progress";
@@ -37,6 +38,8 @@ export default function ProjectDetailPage() {
   const router = useRouter();
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [newMilestoneTitle, setNewMilestoneTitle] = useState("");
+  const [newTaskTitles, setNewTaskTitles] = useState<Record<string, string>>({});
 
   const load = useCallback(() => {
     trpc.project.get
@@ -74,6 +77,50 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleAddMilestone(e: React.FormEvent) {
+    e.preventDefault();
+    if (!newMilestoneTitle.trim()) return;
+    try {
+      await trpc.milestone.create.mutate({ projectId: id, title: newMilestoneTitle.trim() });
+      setNewMilestoneTitle("");
+      load();
+    } catch {
+      setError("Couldn't add that milestone.");
+    }
+  }
+
+  async function handleDeleteMilestone(milestoneId: string) {
+    if (!window.confirm("Delete this milestone and all its tasks?")) return;
+    try {
+      await trpc.milestone.delete.mutate({ milestoneId });
+      load();
+    } catch {
+      setError("Couldn't delete that milestone.");
+    }
+  }
+
+  async function handleAddTask(milestoneId: string, e: React.FormEvent) {
+    e.preventDefault();
+    const title = newTaskTitles[milestoneId]?.trim();
+    if (!title) return;
+    try {
+      await trpc.task.create.mutate({ milestoneId, title });
+      setNewTaskTitles((prev) => ({ ...prev, [milestoneId]: "" }));
+      load();
+    } catch {
+      setError("Couldn't add that task.");
+    }
+  }
+
+  async function handleDeleteTask(taskId: string) {
+    try {
+      await trpc.task.delete.mutate({ taskId });
+      load();
+    } catch {
+      setError("Couldn't delete that task.");
+    }
+  }
+
   if (error) return <p className="p-16 text-sm text-red-600">{error}</p>;
   if (!project) return <p className="p-16 text-sm text-gray-500">Loading...</p>;
 
@@ -99,7 +146,7 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      <div className="relative flex items-center gap-4 overflow-hidden rounded border p-4">
+      <div className="relative flex items-center gap-4 overflow-hidden rounded-xl border border-border p-4">
         <BorderBeam className="pointer-events-none" />
         <CircularProgress percent={overall.percent} size={56} strokeWidth={4} />
         <div>
@@ -112,7 +159,7 @@ export default function ProjectDetailPage() {
 
       {project.milestones.length === 0 && (
         <p className="text-sm text-gray-500">
-          No milestones yet — this project hasn&rsquo;t accepted a stack recommendation.
+          No milestones yet &mdash; add one below to start tracking.
         </p>
       )}
 
@@ -120,14 +167,22 @@ export default function ProjectDetailPage() {
         {project.milestones.map((m) => {
           const progress = computeProgress(m.tasks);
           return (
-            <div key={m.id} className="rounded border p-4">
-              <div className="flex items-center justify-between">
+            <div key={m.id} className="rounded-xl border border-border p-4">
+              <div className="flex items-center justify-between gap-2">
                 <h2 className="font-medium">{m.title}</h2>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">
                     {progress.done}/{progress.total}
                   </span>
                   <CircularProgress percent={progress.percent} size={28} strokeWidth={2.5} />
+                  <button
+                    type="button"
+                    onClick={() => handleDeleteMilestone(m.id)}
+                    aria-label="Delete milestone"
+                    className="rounded p-1 text-gray-400 transition hover:text-red-600"
+                  >
+                    <Trash2 className="size-3.5" strokeWidth={1.5} />
+                  </button>
                 </div>
               </div>
               <ul className="mt-3 flex flex-col gap-2">
@@ -138,26 +193,75 @@ export default function ProjectDetailPage() {
                     >
                       {task.title}
                     </span>
-                    <select
-                      className="rounded border px-2 py-1 text-xs"
-                      value={task.status}
-                      onChange={(e) =>
-                        handleStatusChange(task.id, e.target.value as Task["status"])
-                      }
-                    >
-                      {STATUS_OPTIONS.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="flex items-center gap-2">
+                      <select
+                        className="rounded border border-border bg-background px-2 py-1 text-xs"
+                        value={task.status}
+                        onChange={(e) =>
+                          handleStatusChange(task.id, e.target.value as Task["status"])
+                        }
+                      >
+                        {STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteTask(task.id)}
+                        aria-label="Delete task"
+                        className="rounded p-1 text-gray-400 transition hover:text-red-600"
+                      >
+                        <Trash2 className="size-3.5" strokeWidth={1.5} />
+                      </button>
+                    </div>
                   </li>
                 ))}
               </ul>
+
+              <form
+                onSubmit={(e) => handleAddTask(m.id, e)}
+                className="mt-3 flex items-center gap-2"
+              >
+                <input
+                  type="text"
+                  placeholder="Add a task"
+                  className="flex-1 rounded-lg border border-border bg-background px-2.5 py-1.5 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ring/40"
+                  value={newTaskTitles[m.id] ?? ""}
+                  onChange={(e) =>
+                    setNewTaskTitles((prev) => ({ ...prev, [m.id]: e.target.value }))
+                  }
+                />
+                <button
+                  type="submit"
+                  aria-label="Add task"
+                  className="flex size-7 shrink-0 items-center justify-center rounded-full border border-border transition hover:bg-foreground/5"
+                >
+                  <Plus className="size-3.5" strokeWidth={1.5} />
+                </button>
+              </form>
             </div>
           );
         })}
       </div>
+
+      <form onSubmit={handleAddMilestone} className="flex items-center gap-2">
+        <input
+          type="text"
+          placeholder="Add a milestone"
+          className="flex-1 rounded-lg border border-border bg-background px-3 py-2 text-sm placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ring/40"
+          value={newMilestoneTitle}
+          onChange={(e) => setNewMilestoneTitle(e.target.value)}
+        />
+        <button
+          type="submit"
+          aria-label="Add milestone"
+          className="flex size-8 shrink-0 items-center justify-center rounded-full border border-border transition hover:bg-foreground/5"
+        >
+          <Plus className="size-4" strokeWidth={1.5} />
+        </button>
+      </form>
     </main>
   );
 }

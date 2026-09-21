@@ -2,11 +2,13 @@ import { router } from "./trpc";
 import { stackAdvisorRouter } from "./routers/stack-advisor";
 import { projectRouter } from "./routers/project";
 import { taskRouter } from "./routers/task";
+import { milestoneRouter } from "./routers/milestone";
 
 export const appRouter = router({
   stackAdvisor: stackAdvisorRouter,
   project: projectRouter,
   task: taskRouter,
+  milestone: milestoneRouter,
 });
 
 export type AppRouter = typeof appRouter;

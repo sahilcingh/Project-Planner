@@ -6,7 +6,8 @@
   "types": "./src/index.ts",
   "exports": {
     ".": "./src/index.ts",
-    "./progress": "./src/project/progress.ts"
+    "./progress": "./src/project/progress.ts",
+    "./catalog": "./src/stack-advisor/catalog.ts"
   },
   "scripts": {
     "test": "vitest run"
