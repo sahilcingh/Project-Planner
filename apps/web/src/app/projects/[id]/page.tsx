@@ -5,7 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { TRPCClientError } from "@trpc/client";
 import { trpc } from "@/lib/trpc";
-import { computeProgress } from "@project-planner/api";
+import { computeProgress } from "@project-planner/api/progress";
+import { BorderBeam } from "@/components/ui/border-beam";
+import { CircularProgress } from "@/components/ui/circular-progress";
 
 type Task = {
   id: string;
@@ -97,13 +99,15 @@ export default function ProjectDetailPage() {
         )}
       </div>
 
-      <div>
-        <div className="h-2 w-full rounded bg-gray-100">
-          <div className="h-2 rounded bg-black" style={{ width: `${overall.percent}%` }} />
+      <div className="relative flex items-center gap-4 overflow-hidden rounded border p-4">
+        <BorderBeam className="pointer-events-none" />
+        <CircularProgress percent={overall.percent} size={56} strokeWidth={4} />
+        <div>
+          <p className="text-sm font-medium">Overall progress</p>
+          <p className="text-xs text-gray-500">
+            {overall.done}/{overall.total} tasks done
+          </p>
         </div>
-        <p className="mt-1 text-xs text-gray-500">
-          {overall.done}/{overall.total} tasks done ({overall.percent}%)
-        </p>
       </div>
 
       {project.milestones.length === 0 && (
@@ -117,11 +121,14 @@ export default function ProjectDetailPage() {
           const progress = computeProgress(m.tasks);
           return (
             <div key={m.id} className="rounded border p-4">
-              <div className="flex items-baseline justify-between">
+              <div className="flex items-center justify-between">
                 <h2 className="font-medium">{m.title}</h2>
-                <span className="text-xs text-gray-500">
-                  {progress.done}/{progress.total} ({progress.percent}%)
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-500">
+                    {progress.done}/{progress.total}
+                  </span>
+                  <CircularProgress percent={progress.percent} size={28} strokeWidth={2.5} />
+                </div>
               </div>
               <ul className="mt-3 flex flex-col gap-2">
                 {m.tasks.map((task) => (

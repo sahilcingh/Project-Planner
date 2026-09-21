@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { createClient } from "@/lib/supabase/client";
+import { AuroraHero } from "@/components/ui/aurora-hero";
+import AnimatedButton from "@/components/ui/animated-button";
 
 type Mode = "sign-in" | "sign-up";
 
@@ -12,13 +14,11 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
-    setNotice(null);
     setLoading(true);
     const supabase = createClient();
 
@@ -33,82 +33,73 @@ export default function LoginPage() {
       return;
     }
 
-    if (mode === "sign-up") {
-      setNotice("Check your email to confirm your account, then sign in.");
-      setMode("sign-in");
-      return;
-    }
-
     router.push("/");
     router.refresh();
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-6 py-16">
-      <div className="space-y-1">
-        <h1 className="text-2xl font-semibold">
-          {mode === "sign-in" ? "Sign in" : "Create an account"}
-        </h1>
-        <p className="text-sm text-gray-500">
-          {mode === "sign-in"
-            ? "Welcome back."
-            : "Takes about 30 seconds, no card required."}
-        </p>
-      </div>
+    <main className="flex flex-1 flex-col">
+      <AuroraHero title="Project Planner" className="h-[280px] min-h-[280px] sm:h-[320px]" />
+      <div className="mx-auto flex w-full max-w-sm flex-1 flex-col gap-6 px-6 py-12">
+        <div className="space-y-1">
+          <h1 className="text-2xl font-semibold">
+            {mode === "sign-in" ? "Sign in" : "Create an account"}
+          </h1>
+          <p className="text-sm text-gray-500">
+            {mode === "sign-in"
+              ? "Welcome back."
+              : "Takes about 30 seconds, no card required."}
+          </p>
+        </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <label className="flex flex-col gap-1 text-sm">
-          Email
-          <input
-            type="email"
-            required
-            className="rounded border px-3 py-2"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-        </label>
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <label className="flex flex-col gap-1 text-sm">
+            Email
+            <input
+              type="email"
+              required
+              className="rounded border px-3 py-2"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          Password
-          <input
-            type="password"
-            required
-            minLength={6}
-            className="rounded border px-3 py-2"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
-        </label>
+          <label className="flex flex-col gap-1 text-sm">
+            Password
+            <input
+              type="password"
+              required
+              minLength={6}
+              className="rounded border px-3 py-2"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </label>
 
-        {error && <p className="text-sm text-red-600">{error}</p>}
-        {notice && <p className="text-sm text-green-700">{notice}</p>}
+          {error && <p className="text-sm text-red-600">{error}</p>}
+
+          <AnimatedButton type="submit" disabled={loading} className="w-full">
+            {loading
+              ? "Working..."
+              : mode === "sign-in"
+                ? "Sign in"
+                : "Create account"}
+          </AnimatedButton>
+        </form>
 
         <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          type="button"
+          onClick={() => {
+            setMode(mode === "sign-in" ? "sign-up" : "sign-in");
+            setError(null);
+          }}
+          className="text-sm text-gray-500 underline"
         >
-          {loading
-            ? "Working..."
-            : mode === "sign-in"
-              ? "Sign in"
-              : "Create account"}
+          {mode === "sign-in"
+            ? "Need an account? Sign up"
+            : "Already have an account? Sign in"}
         </button>
-      </form>
-
-      <button
-        type="button"
-        onClick={() => {
-          setMode(mode === "sign-in" ? "sign-up" : "sign-in");
-          setError(null);
-          setNotice(null);
-        }}
-        className="text-sm text-gray-500 underline"
-      >
-        {mode === "sign-in"
-          ? "Need an account? Sign up"
-          : "Already have an account? Sign in"}
-      </button>
+      </div>
     </main>
   );
 }

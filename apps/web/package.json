@@ -11,8 +11,13 @@
   "dependencies": {
     "@project-planner/api": "workspace:*",
     "@project-planner/db": "workspace:*",
+    "@radix-ui/react-progress": "^1.1.1",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.47.10",
+    "clsx": "^2.1.1",
+    "framer-motion": "^11.15.0",
+    "lucide-react": "^0.468.0",
+    "tailwind-merge": "^2.6.0",
     "@trpc/client": "^11.0.0-rc.638",
     "@trpc/server": "^11.0.0-rc.638",
     "next": "16.3.5",

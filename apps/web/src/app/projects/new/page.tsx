@@ -2,11 +2,29 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { Sparkles } from "lucide-react";
 import { TRPCClientError } from "@trpc/client";
 import { trpc } from "@/lib/trpc";
 import { QuestionnaireFields } from "@/components/questionnaire-fields";
 import { RankedOptionsList, type RankedResult } from "@/components/ranked-options-list";
+import AnimatedButton from "@/components/ui/animated-button";
+import { Spinner } from "@/components/ui/spinner";
+import { cn } from "@/lib/utils";
 import type { QuestionnaireAnswers } from "@project-planner/api";
+
+function StepIndicator({ step }: { step: 1 | 2 }) {
+  return (
+    <div className="flex items-center gap-2 text-xs font-medium">
+      <span className={cn(step === 1 ? "text-foreground" : "text-gray-400")}>
+        1. Project details
+      </span>
+      <span className="text-gray-400">&rarr;</span>
+      <span className={cn(step === 2 ? "text-foreground" : "text-gray-400")}>
+        2. Choose a stack
+      </span>
+    </div>
+  );
+}
 
 type Created = { projectId: string; decisionId: string; top3: RankedResult[] };
 
@@ -103,7 +121,9 @@ export default function NewProjectPage() {
 
   if (created) {
     return (
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-16">
+      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
+        <StepIndicator step={2} />
+
         <div className="space-y-2">
           <h1 className="text-2xl font-semibold">Pick a stack for &ldquo;{name}&rdquo;</h1>
           <p className="text-sm text-gray-500">
@@ -114,28 +134,43 @@ export default function NewProjectPage() {
         <RankedOptionsList
           results={created.top3}
           renderAction={(result) => (
-            <button
+            <AnimatedButton
               type="button"
               onClick={() => handleAccept(result.slug)}
               disabled={acceptingSlug !== null}
-              className="rounded bg-black px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+              className="px-3 py-1.5 text-xs"
             >
-              {acceptingSlug === result.slug ? "Setting up..." : "Accept this stack"}
-            </button>
+              {acceptingSlug === result.slug ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner className="size-3" /> Setting up...
+                </span>
+              ) : (
+                "Accept this stack"
+              )}
+            </AnimatedButton>
           )}
         />
 
-        <div className="flex flex-col gap-3 rounded border border-dashed p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-medium">Why #1? (local AI, optional)</h3>
-            <button
+        <div className="flex flex-col gap-3 rounded-xl border border-border p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="flex items-center gap-1.5 text-sm font-medium">
+              <Sparkles className="size-4" strokeWidth={1.5} />
+              Why #1? (local AI, optional)
+            </h3>
+            <AnimatedButton
               type="button"
               onClick={handleExplain}
               disabled={rationaleLoading}
-              className="rounded border px-3 py-1 text-xs font-medium disabled:opacity-50"
+              className="px-3 py-1 text-xs"
             >
-              {rationaleLoading ? "Thinking..." : "Generate explanation"}
-            </button>
+              {rationaleLoading ? (
+                <span className="flex items-center gap-1.5">
+                  <Spinner className="size-3" /> Thinking...
+                </span>
+              ) : (
+                "Generate explanation"
+              )}
+            </AnimatedButton>
           </div>
           {rationale && <p className="text-sm text-gray-700">{rationale}</p>}
         </div>
@@ -146,7 +181,9 @@ export default function NewProjectPage() {
   }
 
   return (
-    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-8 px-6 py-16">
+    <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
+      <StepIndicator step={1} />
+
       <div className="space-y-2">
         <h1 className="text-2xl font-semibold">New project</h1>
         <p className="text-sm text-gray-500">
@@ -154,22 +191,28 @@ export default function NewProjectPage() {
         </p>
       </div>
 
-      <form onSubmit={handleSubmit} className="flex flex-col gap-5">
-        <label className="flex flex-col gap-1 text-sm">
+      <form
+        onSubmit={handleSubmit}
+        className="flex flex-col gap-6 rounded-xl border border-border p-6 sm:p-8"
+      >
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
           Project name
           <input
             type="text"
             required
-            className="rounded border px-3 py-2"
+            placeholder="e.g. Customer feedback portal"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-ring/40"
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
         </label>
 
-        <label className="flex flex-col gap-1 text-sm">
-          Description (optional)
+        <label className="flex flex-col gap-1.5 text-sm font-medium">
+          Description
+          <span className="text-xs font-normal text-gray-500">Optional</span>
           <textarea
-            className="rounded border px-3 py-2"
+            rows={3}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm font-normal focus:outline-none focus:ring-2 focus:ring-ring/40"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
           />
@@ -179,13 +222,15 @@ export default function NewProjectPage() {
 
         {error && <p className="text-sm text-red-600">{error}</p>}
 
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded bg-black px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {loading ? "Scoring..." : "Get recommendation"}
-        </button>
+        <AnimatedButton type="submit" disabled={loading} className="w-full">
+          {loading ? (
+            <span className="flex items-center gap-1.5">
+              <Spinner className="size-4" /> Scoring...
+            </span>
+          ) : (
+            "Get recommendation"
+          )}
+        </AnimatedButton>
       </form>
     </main>
   );

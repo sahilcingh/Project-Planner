@@ -126,9 +126,49 @@ This means a follow-up `pnpm db:push` that drops two tables and alters `stack_de
 - `/projects`, `/projects/new`, `/login` all compile and serve 200 with no error markers in the rendered HTML; lint and `tsc --noEmit` clean across `packages/api` and `apps/web`
 - Not yet done: a real click-through in an actual browser (only verified via the router/HTTP layer so far), Playwright e2e suite
 
-## Verification
-- Vitest unit tests on the scoring engine (5 passing, including a regression test for the mobile-tie-break bug found during manual testing) and progress roll-up math (to add)
-- `stackAdvisor.explain` returns rationale text once the model finishes its first-run download; if the model fails to load, `stackAdvisor.recommend` still returns a full ranking (proves the AI dependency is truly optional) — verified live
-- Auth verified live against the real Supabase project: signup creates a row in both `auth.users` and (via the trigger) `public.users`; sign-in works; unauthenticated visitors see a "Sign in" link, signed-in visitors see their email + sign-out
-- Playwright e2e for the golden path: sign up → create project → answer questionnaire → accept recommendation → see seeded tasks → complete a task → progress % updates — not yet written
-- Manually run `pnpm dev`, walk through the golden path in-browser before calling any milestone done
+---
+
+## Step 9: UI polish with Skiper UI + Vengeance UI — done
+
+You asked to improve the UI using three libraries. One (Animmaster Lib) is a paid-only product with no free tier and no npm package — you don't have an account, so it's out of scope; skipping it per your call. The other two are copy-paste component registries (not npm packages — a shadcn-style CLI or direct fetch copies component *source* into the repo, which you then own and can edit):
+
+- **Skiper UI** — animated components, free + paid tiers. I scanned its public registry (`https://skiper-ui.com/r/skiperN.json` for N=1-90) and confirmed ~30 are freely fetchable with full source, no license key needed. Relevant free ones found: `skiper37` (Animated number — great for progress %), `skiper89` (circular scroll progress indicator), `skiper16`/`skiper19`/`skiper87` (scroll/fade reveal effects), `skiper58` (text-roll nav), `skiper41` (progressive blur), `skiper3` (Apple-style play/icon button).
+- **Vengeance UI** — its full registry (`https://www.vengenceui.com/r/registry.json`, 133 components) is entirely public with real source in every item I checked (`aurora-hero`, `animated-button` both returned full `.tsx` content, no gating). Relevant ones: `aurora-hero` (animated hero background), `animated-button`, `glow-border-card`, `border-beam`, `hover-card`, `stats-counter`, `progress`, `spinner`.
+
+Since both are "copy source into your repo" libraries rather than npm packages, integration means: fetch the specific component's JSON from its registry URL, extract `files[].content`, and write it into `apps/web/src/components/ui/` — no `npx shadcn add` CLI needed (avoids relying on an interactive/networked CLI call; direct fetch is what the CLI does internally anyway, and I already have the exact URLs).
+
+**Attribution**: Skiper UI's free tier requires attribution. Adding a small "UI components from Skiper UI & Vengeance UI" credit line in the footer satisfies this — cheap, and keeps us honest about the license terms.
+
+### Foundation (once, shared by all four pages)
+- Add deps to `apps/web`: `framer-motion`, `clsx`, `tailwind-merge`, `lucide-react` (all four components above need at least one of these)
+- Add `apps/web/src/lib/utils.ts` with the standard shadcn `cn()` helper (`twMerge(clsx(inputs))`) — every pulled component imports `cn` from `@/lib/utils`, so this one file unblocks all of them
+- Fetch each chosen component's registry JSON, write its `content` to `apps/web/src/components/ui/<name>.tsx` as-is (these are meant to be owned/edited, not treated as an opaque dependency)
+
+### Per-page — what actually shipped
+- **`/login`**: `aurora-hero` as an animated banner above the form; `animated-button` for the submit button
+- **`/projects` (dashboard)**: `border-beam` accent on each project card (not `glow-border-card` — it needs an undocumented `.glow-conic` CSS class the registry item doesn't ship, so `border-beam` was the safer, fully self-contained choice); `stats-counter` for the done/total percent
+- **`/projects/new`**: `animated-button` for "Get recommendation"/"Accept this stack"/"Generate explanation"; `spinner` next to the loading copy
+- **`/projects/[id]`**: a hand-written `circular-progress.tsx` (adapted from Skiper's `skiper89` SVG-ring + framer-motion technique, with the scroll-linking/drag-handle/lorem-ipsum demo chrome stripped out and `percent` as a plain prop instead) on the overall-progress card and per milestone; `border-beam` on the overall-progress card
+- Skipped `skiper37` (Animated number) entirely — it turned out to be a 300-line multi-demo showcase file (countdown timers, unrelated to our need), not a focused component. `stats-counter` already does count-up animation with no extra dependency, so it covers the same need more simply.
+- Attribution footer added site-wide, linking both libraries.
+
+New deps: `framer-motion`, `clsx`, `tailwind-merge`, `lucide-react`, `@radix-ui/react-progress`. `apps/web/src/lib/utils.ts` (`cn()`) and three new shadcn theme tokens (`--border`, `--ring`, `--primary`, light+dark) added to `globals.css` for the components that needed them.
+
+**Bug found and fixed along the way** (pre-existing, not introduced by this work — just never exercised before): `/projects/[id]/page.tsx` is a client component that imported `computeProgress` from `@project-planner/api`'s main barrel export, which also re-exports the tRPC `appRouter` — pulling the `postgres` driver (Node-only `tls`/`net` imports) into the client bundle and crashing the page with a 500. Fixed by adding a `./progress` subpath export to `packages/api/package.json` pointing directly at `progress.ts`, bypassing the router-carrying barrel entirely.
+
+### Verification
+- `pnpm --filter @project-planner/web lint` and `tsc --noEmit` clean; all 12 Vitest tests still passing
+- Every restyled page checked live against the running dev server: `/`, `/login`, `/projects`, `/projects/new` all 200 with no error markers; `aurora-hero`'s markup confirmed present in `/login`'s HTML
+- `/projects/[id]` specifically re-tested with a real project (created via `createCaller`, then deleted after) — caught the barrel-import bug this way, confirmed fixed (200, zero "Module not found" lines in the server log) after the subpath-export fix
+- Not verified: actual animation/motion quality and visual polish — that needs your eyes in a real browser, not something checkable headlessly
+
+### Follow-up: browser-driven verification, and an OTP signup-confirmation flow
+
+After this, I actually drove the running app with a real headless browser (Playwright/Chromium, installed fresh into the scratchpad — its Chrome-for-Testing binary downloads from Google's CDN, which is reachable here, unlike GitHub's release CDN) rather than just checking HTTP status codes. Confirmed live: `aurora-hero`'s rainbow-stripe effect, `border-beam` sweeping on project cards, circular progress rings animating correctly on real task-status changes (0%→11% overall, 0%→33% on a milestone), no console errors.
+
+While verifying login, hit real user friction: password sign-in returned "wrong credentials" for the person actually typing it (root cause never fully pinned down — the same credentials worked via direct API calls and via automated browser testing seconds apart, most likely a manual typo/autofill issue, not an app bug). This led to a scope change: **sign-up's email-confirmation step now uses an OTP code instead of a magic link** (password-based sign-in/sign-up themselves are unchanged, per your instruction to keep them).
+
+- `/login`'s sign-up flow now has a third state, `verify-otp`: after `supabase.auth.signUp()` succeeds, instead of the old "check your email, then sign in" message, the page shows a code-entry form. Submitting calls `supabase.auth.verifyOtp({ email, token, type: "signup" })`, which — unlike the old magic-link flow — returns a live session directly, so successful verification signs you in immediately. A "Resend code" button calls `supabase.auth.resend({ type: "signup", email })`.
+- **Bug caught during testing, fixed**: I initially hardcoded the code input to `maxLength={6}` and disabled submit unless `otp.length === 6`, assuming Supabase's usual 6-digit OTP. Testing against the real project (via Supabase's admin `generate_link` endpoint, which returns the actual `email_otp` value for exactly this kind of verification) showed **this project issues 8-digit codes**. The length assumption would have silently locked every real signup out of ever submitting a valid code. Fixed by removing the length cap entirely — the input now accepts whatever length Supabase actually issues, and copy no longer claims a specific digit count.
+- **One thing outside my reach**: whether the confirmation email a real user receives actually *displays* the code depends on the "Confirm signup" email template in the Supabase dashboard containing the `{{ .Token }}` variable — I don't have Management API access (only the project's anon/service_role keys), so I can't check or edit that template myself. If codes don't show up in real inbox testing, that's the first place to look: **Supabase Dashboard → Authentication → Email Templates → Confirm signup**, add `{{ .Token }}` to the body.
+- Verified via the admin `generate_link` endpoint (returns the real OTP without needing a real inbox) + a direct call to the `/auth/v1/verify` endpoint with that code: confirms a full session, `email_confirmed_at` set. The UI-level submit path (typing the code into the fixed input and clicking "Verify & continue") was blocked from a second full run by Supabase's free-tier email-send rate limit (same constraint hit earlier in this project) — the fix itself is confirmed correct at the API layer and by code inspection, but the very last click-through wasn't re-captured on camera.

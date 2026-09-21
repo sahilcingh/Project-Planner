@@ -5,6 +5,9 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { TRPCClientError } from "@trpc/client";
 import { trpc } from "@/lib/trpc";
+import AnimatedButton from "@/components/ui/animated-button";
+import { BorderBeam } from "@/components/ui/border-beam";
+import StatsCounter from "@/components/ui/stats-counter";
 
 type ProjectRow = {
   id: string;
@@ -36,11 +39,10 @@ export default function ProjectsPage() {
     <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col gap-6 px-6 py-16">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-semibold">Your projects</h1>
-        <Link
-          href="/projects/new"
-          className="rounded bg-black px-3 py-1.5 text-sm font-medium text-white"
-        >
-          New project
+        <Link href="/projects/new">
+          <AnimatedButton type="button" className="px-3 py-1.5 text-sm">
+            New project
+          </AnimatedButton>
         </Link>
       </div>
 
@@ -64,8 +66,9 @@ export default function ProjectsPage() {
               <li key={p.id}>
                 <Link
                   href={`/projects/${p.id}`}
-                  className="block rounded border p-4 hover:border-gray-400"
+                  className="relative block overflow-hidden rounded border p-4 hover:border-gray-400"
                 >
+                  <BorderBeam className="pointer-events-none" />
                   <div className="flex items-baseline justify-between">
                     <h2 className="font-medium">{p.name}</h2>
                     <span className="text-xs text-gray-500">{p.status}</span>
@@ -77,7 +80,8 @@ export default function ProjectsPage() {
                     />
                   </div>
                   <p className="mt-1 text-xs text-gray-500">
-                    {p.doneCount}/{p.taskCount} tasks done ({percent}%)
+                    {p.doneCount}/{p.taskCount} tasks done (
+                    <StatsCounter value={percent} duration={0.8} suffix="%" />)
                   </p>
                 </Link>
               </li>
