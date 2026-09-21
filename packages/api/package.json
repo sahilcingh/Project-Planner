@@ -1,0 +1,21 @@
+{
+  "name": "@project-planner/api",
+  "version": "0.0.1",
+  "private": true,
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^3.2.0",
+    "@project-planner/db": "workspace:*",
+    "@trpc/server": "^11.0.0-rc.638",
+    "drizzle-orm": "^0.36.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.4"
+  }
+}
