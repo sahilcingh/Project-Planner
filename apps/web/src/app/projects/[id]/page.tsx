@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Plus, Trash2 } from "lucide-react";
 import { TRPCClientError } from "@trpc/client";
 import { trpc } from "@/lib/trpc";
 import { computeProgress } from "@project-planner/api/progress";
 import { BorderBeam } from "@/components/ui/border-beam";
 import { CircularProgress } from "@/components/ui/circular-progress";
+import { cn } from "@/lib/utils";
 
 type Task = {
   id: string;
@@ -19,6 +20,7 @@ type Task = {
 type Milestone = {
   id: string;
   title: string;
+  dueDate: string | null;
   tasks: Task[];
 };
 
@@ -32,6 +34,96 @@ type ProjectDetail = {
 };
 
 const STATUS_OPTIONS: Task["status"][] = ["todo", "in_progress", "done"];
+
+function EditableText({
+  value,
+  onSave,
+  className,
+}: {
+  value: string;
+  onSave: (next: string) => void;
+  className?: string;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(value);
+
+  function commit() {
+    setEditing(false);
+    const trimmed = draft.trim();
+    if (trimmed && trimmed !== value) onSave(trimmed);
+    else setDraft(value);
+  }
+
+  if (editing) {
+    return (
+      <input
+        autoFocus
+        className={cn(
+          "rounded border border-border bg-background px-1.5 py-0.5",
+          className,
+        )}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") commit();
+          if (e.key === "Escape") {
+            setDraft(value);
+            setEditing(false);
+          }
+        }}
+      />
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        setDraft(value);
+        setEditing(true);
+      }}
+      className={cn("text-left underline decoration-dotted underline-offset-2", className)}
+    >
+      {value}
+    </button>
+  );
+}
+
+function ReorderButtons({
+  onMoveUp,
+  onMoveDown,
+  disableUp,
+  disableDown,
+}: {
+  onMoveUp: () => void;
+  onMoveDown: () => void;
+  disableUp: boolean;
+  disableDown: boolean;
+}) {
+  return (
+    <div className="flex flex-col">
+      <button
+        type="button"
+        onClick={onMoveUp}
+        disabled={disableUp}
+        aria-label="Move up"
+        className="rounded p-0.5 text-gray-400 transition hover:text-foreground disabled:opacity-30"
+      >
+        <ChevronUp className="size-3.5" strokeWidth={1.5} />
+      </button>
+      <button
+        type="button"
+        onClick={onMoveDown}
+        disabled={disableDown}
+        aria-label="Move down"
+        className="rounded p-0.5 text-gray-400 transition hover:text-foreground disabled:opacity-30"
+      >
+        <ChevronDown className="size-3.5" strokeWidth={1.5} />
+      </button>
+    </div>
+  );
+}
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>();
@@ -99,6 +191,50 @@ export default function ProjectDetailPage() {
     }
   }
 
+  async function handleRenameMilestone(milestoneId: string, title: string) {
+    setProject((prev) =>
+      prev
+        ? { ...prev, milestones: prev.milestones.map((m) => (m.id === milestoneId ? { ...m, title } : m)) }
+        : prev,
+    );
+    try {
+      await trpc.milestone.update.mutate({ milestoneId, title });
+    } catch {
+      load();
+    }
+  }
+
+  async function handleSetDueDate(milestoneId: string, dueDate: string | null) {
+    setProject((prev) =>
+      prev
+        ? { ...prev, milestones: prev.milestones.map((m) => (m.id === milestoneId ? { ...m, dueDate } : m)) }
+        : prev,
+    );
+    try {
+      await trpc.milestone.update.mutate({ milestoneId, dueDate });
+    } catch {
+      load();
+    }
+  }
+
+  async function handleMoveMilestone(milestoneId: string, direction: -1 | 1) {
+    if (!project) return;
+    const ids = project.milestones.map((m) => m.id);
+    const idx = ids.indexOf(milestoneId);
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= ids.length) return;
+    [ids[idx], ids[swapIdx]] = [ids[swapIdx], ids[idx]];
+
+    setProject((prev) =>
+      prev ? { ...prev, milestones: ids.map((mid) => prev.milestones.find((m) => m.id === mid)!) } : prev,
+    );
+    try {
+      await trpc.milestone.reorder.mutate({ projectId: project.id, milestoneIds: ids });
+    } catch {
+      load();
+    }
+  }
+
   async function handleAddTask(milestoneId: string, e: React.FormEvent) {
     e.preventDefault();
     const title = newTaskTitles[milestoneId]?.trim();
@@ -118,6 +254,52 @@ export default function ProjectDetailPage() {
       load();
     } catch {
       setError("Couldn't delete that task.");
+    }
+  }
+
+  async function handleRenameTask(taskId: string, title: string) {
+    setProject((prev) =>
+      prev
+        ? {
+            ...prev,
+            milestones: prev.milestones.map((m) => ({
+              ...m,
+              tasks: m.tasks.map((t) => (t.id === taskId ? { ...t, title } : t)),
+            })),
+          }
+        : prev,
+    );
+    try {
+      await trpc.task.update.mutate({ taskId, title });
+    } catch {
+      load();
+    }
+  }
+
+  async function handleMoveTask(milestoneId: string, taskId: string, direction: -1 | 1) {
+    if (!project) return;
+    const milestone = project.milestones.find((m) => m.id === milestoneId);
+    if (!milestone) return;
+    const ids = milestone.tasks.map((t) => t.id);
+    const idx = ids.indexOf(taskId);
+    const swapIdx = idx + direction;
+    if (swapIdx < 0 || swapIdx >= ids.length) return;
+    [ids[idx], ids[swapIdx]] = [ids[swapIdx], ids[idx]];
+
+    setProject((prev) =>
+      prev
+        ? {
+            ...prev,
+            milestones: prev.milestones.map((m) =>
+              m.id === milestoneId ? { ...m, tasks: ids.map((tid) => m.tasks.find((t) => t.id === tid)!) } : m,
+            ),
+          }
+        : prev,
+    );
+    try {
+      await trpc.task.reorder.mutate({ milestoneId, taskIds: ids });
+    } catch {
+      load();
     }
   }
 
@@ -164,12 +346,35 @@ export default function ProjectDetailPage() {
       )}
 
       <div className="flex flex-col gap-6">
-        {project.milestones.map((m) => {
+        {project.milestones.map((m, milestoneIndex) => {
           const progress = computeProgress(m.tasks);
           return (
             <div key={m.id} className="rounded-xl border border-border p-4">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="font-medium">{m.title}</h2>
+                <div className="flex items-center gap-2">
+                  <ReorderButtons
+                    onMoveUp={() => handleMoveMilestone(m.id, -1)}
+                    onMoveDown={() => handleMoveMilestone(m.id, 1)}
+                    disableUp={milestoneIndex === 0}
+                    disableDown={milestoneIndex === project.milestones.length - 1}
+                  />
+                  <div>
+                    <EditableText
+                      value={m.title}
+                      onSave={(title) => handleRenameMilestone(m.id, title)}
+                      className="font-medium"
+                    />
+                    <div className="mt-0.5 flex items-center gap-1 text-xs text-gray-500">
+                      Due
+                      <input
+                        type="date"
+                        value={m.dueDate ?? ""}
+                        onChange={(e) => handleSetDueDate(m.id, e.target.value || null)}
+                        className="rounded border border-border bg-background px-1 py-0.5 text-xs"
+                      />
+                    </div>
+                  </div>
+                </div>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-gray-500">
                     {progress.done}/{progress.total}
@@ -186,13 +391,21 @@ export default function ProjectDetailPage() {
                 </div>
               </div>
               <ul className="mt-3 flex flex-col gap-2">
-                {m.tasks.map((task) => (
+                {m.tasks.map((task, taskIndex) => (
                   <li key={task.id} className="flex items-center justify-between gap-3 text-sm">
-                    <span
-                      className={task.status === "done" ? "text-gray-400 line-through" : ""}
-                    >
-                      {task.title}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <ReorderButtons
+                        onMoveUp={() => handleMoveTask(m.id, task.id, -1)}
+                        onMoveDown={() => handleMoveTask(m.id, task.id, 1)}
+                        disableUp={taskIndex === 0}
+                        disableDown={taskIndex === m.tasks.length - 1}
+                      />
+                      <EditableText
+                        value={task.title}
+                        onSave={(title) => handleRenameTask(task.id, title)}
+                        className={task.status === "done" ? "text-gray-400 line-through" : ""}
+                      />
+                    </div>
                     <div className="flex items-center gap-2">
                       <select
                         className="rounded border border-border bg-background px-2 py-1 text-xs"

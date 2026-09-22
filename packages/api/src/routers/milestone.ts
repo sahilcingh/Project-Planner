@@ -45,4 +45,50 @@ export const milestoneRouter = router({
 
       return { milestoneId: input.milestoneId };
     }),
+
+  update: protectedProcedure
+    .input(
+      z.object({
+        milestoneId: z.string().uuid(),
+        title: z.string().min(1).optional(),
+        dueDate: z.string().nullable().optional(),
+      }),
+    )
+    .mutation(async ({ ctx, input }) => {
+      const [row] = await db
+        .select({ ownerId: projects.ownerId })
+        .from(milestones)
+        .innerJoin(projects, eq(milestones.projectId, projects.id))
+        .where(eq(milestones.id, input.milestoneId));
+      if (!row || row.ownerId !== ctx.userId) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const updates: { title?: string; dueDate?: string | null } = {};
+      if (input.title !== undefined) updates.title = input.title;
+      if (input.dueDate !== undefined) updates.dueDate = input.dueDate;
+      if (Object.keys(updates).length === 0) return { milestoneId: input.milestoneId };
+
+      await db.update(milestones).set(updates).where(eq(milestones.id, input.milestoneId));
+      return { milestoneId: input.milestoneId };
+    }),
+
+  reorder: protectedProcedure
+    .input(z.object({ projectId: z.string().uuid(), milestoneIds: z.array(z.string().uuid()) }))
+    .mutation(async ({ ctx, input }) => {
+      const [project] = await db
+        .select({ id: projects.id })
+        .from(projects)
+        .where(and(eq(projects.id, input.projectId), eq(projects.ownerId, ctx.userId)));
+      if (!project) throw new TRPCError({ code: "NOT_FOUND" });
+
+      await db.transaction(async (tx) => {
+        for (const [index, milestoneId] of input.milestoneIds.entries()) {
+          await tx
+            .update(milestones)
+            .set({ order: index })
+            .where(and(eq(milestones.id, milestoneId), eq(milestones.projectId, input.projectId)));
+        }
+      });
+
+      return { projectId: input.projectId };
+    }),
 });
