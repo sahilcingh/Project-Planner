@@ -15,6 +15,8 @@ import type { QuestionnaireAnswers } from "@project-planner/api";
 
 type Mode = "advisor" | "manual";
 
+const LOCAL_AI_DISABLED = process.env.NEXT_PUBLIC_LOCAL_AI_DISABLED === "1";
+
 function useUnauthorizedRedirect() {
   const router = useRouter();
   return function handleUnauthorized(err: unknown) {
@@ -190,20 +192,24 @@ function AdvisorFlow() {
               <Sparkles className="size-4" strokeWidth={1.5} />
               Why #1? (local AI, optional)
             </h3>
-            <AnimatedButton
-              type="button"
-              onClick={handleExplain}
-              disabled={rationaleLoading}
-              className="px-3 py-1 text-xs"
-            >
-              {rationaleLoading ? (
-                <span className="flex items-center gap-1.5">
-                  <Spinner className="size-3" /> Thinking...
-                </span>
-              ) : (
-                "Generate explanation"
-              )}
-            </AnimatedButton>
+            {LOCAL_AI_DISABLED ? (
+              <span className="text-xs text-gray-500">Not available on this deployment</span>
+            ) : (
+              <AnimatedButton
+                type="button"
+                onClick={handleExplain}
+                disabled={rationaleLoading}
+                className="px-3 py-1 text-xs"
+              >
+                {rationaleLoading ? (
+                  <span className="flex items-center gap-1.5">
+                    <Spinner className="size-3" /> Thinking...
+                  </span>
+                ) : (
+                  "Generate explanation"
+                )}
+              </AnimatedButton>
+            )}
           </div>
           {rationale && <p className="text-sm text-gray-700">{rationale}</p>}
         </div>

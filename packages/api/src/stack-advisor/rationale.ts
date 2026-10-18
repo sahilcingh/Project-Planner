@@ -10,6 +10,22 @@ export type RankedOption = ScoredOption & { option: StackOptionSeed };
 
 export class RationaleUnavailableError extends Error {}
 
+/**
+ * Loading the model and running inference in-process can't complete
+ * within a serverless function's execution window — Vercel would have to
+ * re-download several hundred MB of weights on every cold start. Checked
+ * server-side (authoritative) so a direct API call fails fast instead of
+ * hanging until the function times out. Set LOCAL_AI_FORCE_ENABLE=true to
+ * override once this runs on a persistent host instead.
+ */
+export function unavailableReason(): string | null {
+  if (process.env.LOCAL_AI_FORCE_ENABLE === "true") return null;
+  if (process.env.VERCEL) {
+    return "Local AI rationale isn't available on this deployment — serverless functions can't load the model in time.";
+  }
+  return null;
+}
+
 type TextGenerationPipeline = (
   messages: { role: string; content: string }[],
   options: { max_new_tokens: number },

@@ -8,6 +8,7 @@ import { getTop3, questionnaireSchema } from "../stack-advisor/questionnaire";
 import {
   generateRationale,
   RationaleUnavailableError,
+  unavailableReason,
   type RankedOption,
 } from "../stack-advisor/rationale";
 import { generateStarterPlan } from "../stack-advisor/starter-plan";
@@ -139,6 +140,11 @@ export const projectRouter = router({
   generateRationale: protectedProcedure
     .input(z.object({ projectId: uuid, decisionId: uuid }))
     .mutation(async ({ ctx, input }) => {
+      const unavailable = unavailableReason();
+      if (unavailable) {
+        throw new TRPCError({ code: "PRECONDITION_FAILED", message: unavailable });
+      }
+
       await requireOwnedProject(input.projectId, ctx.userId);
 
       const [decision] = await db
